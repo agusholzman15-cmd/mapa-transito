@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa de Tránsito de Buenos Aires – PoC Georreferenciada</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- deck.gl Standalone Bundle -->
+  <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
+
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- React 18 & Babel Standalone -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #020617; color: #f8fafc; margin: 0; padding: 0; overflow: hidden; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const INITIAL_DATASET = [
+      { id: 1, nombre: 'RD165 Dorrego (Sentido A)', categoria: 'Alta', latitud: -34.56336, longitud: -58.41529, valor: 4027, fecha: '2024-01-01', descripcion: 'AU 4 Lugones - Pico máximo: 9016 veh/h', autopista: 'AU 4 Lugones' },
+      { id: 2, nombre: 'RD166 Ombues (Sentido A)', categoria: 'Alta', latitud: -34.56044, longitud: -58.41908, valor: 4427, fecha: '2024-01-01', descripcion: 'AU 4 Lugones - Pico máximo: 8822 veh/h', autopista: 'AU 4 Lugones' },
+      { id: 3, nombre: 'RD168 Juramento (Sentido A)', categoria: 'Alta', latitud: -34.54977, longitud: -58.43602, valor: 4108, fecha: '2024-01-01', descripcion: 'AU 4 Lugones - Pico máximo: 8486 veh/h', autopista: 'AU 4 Lugones' },
+      { id: 4, nombre: 'RD169 Monroe (Sentido A)', categoria: 'Alta', latitud: -34.54629, longitud: -58.44224, valor: 5066, fecha: '2024-01-01', descripcion: 'AU 4 Lugones - Pico máximo: 9567 veh/h', autopista: 'AU 4 Lugones' },
+      { id: 5, nombre: 'RD170 Udaondo (Sentido A)', categoria: 'Alta', latitud: -34.54293, longitud: -58.44901, valor: 4798, fecha: '2024-01-01', descripcion: 'AU 4 Lugones - Pico máximo: 9303 veh/h', autopista: 'AU 4 Lugones' },
+      { id: 6, nombre: 'RD171 Esma (Sentido A)', categoria: 'Alta', latitud: -34.53767, longitud: -58.45967, valor: 4892, fecha: '2024-01-01', descripcion: 'AU 4 Lugones - Pico máximo: 9631 veh/h', autopista: 'AU 4 Lugones' },
+      { id: 7, nombre: 'RD180 Encalada (Sentido B)', categoria: 'Media', latitud: -34.54778, longitud: -58.43848, valor: 2011, fecha: '2024-01-01', descripcion: 'AU 5 Cantilo - Pico máximo: 4330 veh/h', autopista: 'AU 5 Cantilo' },
+      { id: 8, nombre: 'RD181 Ciudad Univer. (Sentido B)', categoria: 'Alta', latitud: -34.54362, longitud: -58.44640, valor: 4063, fecha: '2024-01-01', descripcion: 'AU 5 Cantilo - Pico máximo: 7579 veh/h', autopista: 'AU 5 Cantilo' },
+      { id: 9, nombre: 'RD182 Labruna (Sentido B)', categoria: 'Media', latitud: -34.54230, longitud: -58.44869, valor: 3809, fecha: '2024-01-01', descripcion: 'AU 5 Cantilo - Pico máximo: 7294 veh/h', autopista: 'AU 5 Cantilo' },
+      { id: 10, nombre: 'RD183 Centro Naval (Sentido B)', categoria: 'Media', latitud: -34.53709, longitud: -58.45916, valor: 3781, fecha: '2024-01-01', descripcion: 'AU 5 Cantilo - Pico máximo: 7012 veh/h', autopista: 'AU 5 Cantilo' },
+      { id: 11, nombre: 'RD125 Osv.Cruz A (Sentido A)', categoria: 'Media', latitud: -34.65134, longitud: -58.37255, valor: 2038, fecha: '2024-01-01', descripcion: 'AU 9 de Julio Sur - Pico máximo: 4941 veh/h', autopista: 'AU 9 de Julio Sur' },
+      { id: 12, nombre: 'RD126 Osv.Cruz B (Sentido B)', categoria: 'Media', latitud: -34.65136, longitud: -58.37266, valor: 2244, fecha: '2024-01-01', descripcion: 'AU 9 de Julio Sur - Pico máximo: 4935 veh/h', autopista: 'AU 9 de Julio Sur' },
+      { id: 13, nombre: 'RD128 Ben.Q.Martín B (Sentido B)', categoria: 'Baja', latitud: -34.64358, longitud: -58.37592, valor: 1941, fecha: '2024-01-01', descripcion: 'AU 9 de Julio Sur - Pico máximo: 4357 veh/h', autopista: 'AU 9 de Julio Sur' },
+      { id: 14, nombre: 'RD129 Olavarria (Sentido B)', categoria: 'Media', latitud: -34.64076, longitud: -58.37651, valor: 2459, fecha: '2024-01-01', descripcion: 'AU 9 de Julio Sur - Pico máximo: 5466 veh/h', autopista: 'AU 9 de Julio Sur' },
+      { id: 15, nombre: 'RD130 Suarez (Sentido A)', categoria: 'Media', latitud: -34.63940, longitud: -58.37635, valor: 2335, fecha: '2024-01-01', descripcion: 'AU 9 de Julio Sur - Pico máximo: 5858 veh/h', autopista: 'AU 9 de Julio Sur' },
+      { id: 16, nombre: 'RD134 Ituzaingo (Sentido A)', categoria: 'Media', latitud: -34.63260, longitud: -58.37861, valor: 2395, fecha: '2024-01-01', descripcion: 'AU 9 de Julio Sur - Pico máximo: 5182 veh/h', autopista: 'AU 9 de Julio Sur' },
+      { id: 17, nombre: 'RD134 Ituzaingo (Sentido B)', categoria: 'Media', latitud: -34.63260, longitud: -58.37861, valor: 2501, fecha: '2024-01-01', descripcion: 'AU 9 de Julio Sur - Pico máximo: 5285 veh/h', autopista: 'AU 9 de Julio Sur' },
+      { id: 18, nombre: 'RD100 Montiel (Sentido A)', categoria: 'Media', latitud: -34.68411, longitud: -58.48264, valor: 3049, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 5576 veh/h', autopista: 'AU Dellepiane' },
+      { id: 19, nombre: 'RD100 Montiel (Sentido B)', categoria: 'Baja', latitud: -34.68411, longitud: -58.48264, valor: 1498, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 5034 veh/h', autopista: 'AU Dellepiane' },
+      { id: 20, nombre: 'RD101 de la Torre (Sentido A)', categoria: 'Media', latitud: -34.67917, longitud: -58.47959, valor: 3027, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 5522 veh/h', autopista: 'AU Dellepiane' },
+      { id: 21, nombre: 'RD101 de la Torre (Sentido B)', categoria: 'Baja', latitud: -34.67917, longitud: -58.47959, valor: 1529, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 3664 veh/h', autopista: 'AU Dellepiane' },
+      { id: 22, nombre: 'RD103 Miralla (Sentido A)', categoria: 'Media', latitud: -34.66990, longitud: -58.47536, valor: 3476, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 7388 veh/h', autopista: 'AU Dellepiane' },
+      { id: 23, nombre: 'RD103 Miralla (Sentido B)', categoria: 'Media', latitud: -34.66990, longitud: -58.47536, valor: 2575, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 4960 veh/h', autopista: 'AU Dellepiane' },
+      { id: 24, nombre: 'RD108 Ramal a 27f. (Sentido A)', categoria: 'Baja', latitud: -34.65369, longitud: -58.46812, valor: 543, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 1071 veh/h', autopista: 'AU Dellepiane' },
+      { id: 25, nombre: 'RD111 Ramal 9 (Sentido B)', categoria: 'Baja', latitud: -34.65061, longitud: -58.46677, valor: 458, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 1254 veh/h', autopista: 'AU Dellepiane' },
+      { id: 26, nombre: 'RD113 Ingreso DELL2 (Sentido A)', categoria: 'Baja', latitud: -34.65134, longitud: -58.46643, valor: 57, fecha: '2024-01-01', descripcion: 'AU Dellepiane - Pico máximo: 284 veh/h', autopista: 'AU Dellepiane' }
+    ];
+
+    const INITIAL_VIEW_STATE = { longitude: -58.435, latitude: -34.605, zoom: 11.2, pitch: 0, bearing: 0 };
+
+    function App() {
+      const [dataset] = useState(INITIAL_DATASET);
+      const [layerMode, setLayerMode] = useState('scatterplot');
+      const [categoryFilter, setCategoryFilter] = useState('Todas');
+      const [highwayFilter, setHighwayFilter] = useState('Todas');
+      const [hoverInfo, setHoverInfo] = useState(null);
+      const [selectedRadar, setSelectedRadar] = useState(null);
+
+      const deckContainerRef = useRef(null);
+      const deckInstanceRef = useRef(null);
+
+      const enrichedDataset = useMemo(() => dataset.map(d => ({
+        ...d,
+        autopista: d.autopista || 'Red Autopistas',
+        picoMaximo: d.descripcion.match(/Pico máximo:\s*([\d.,]+\s*veh\/h)/i)?.[1] || 'N/D'
+      })), [dataset]);
+
+      const highways = useMemo(() => ['Todas', ...new Set(enrichedDataset.map(d => d.autopista))], [enrichedDataset]);
+
+      const filteredData = useMemo(() => enrichedDataset.filter(item => {
+        return (categoryFilter === 'Todas' || item.categoria === categoryFilter) &&
+               (highwayFilter === 'Todas' || item.autopista === highwayFilter);
+      }), [enrichedDataset, categoryFilter, highwayFilter]);
+
+      const kpis = useMemo(() => {
+        const total = filteredData.length;
+        const sum = filteredData.reduce((acc, item) => acc + item.valor, 0);
+        return { total, avg: total ? Math.round(sum / total) : 0, critical: filteredData.filter(i => i.categoria === 'Alta').length };
+      }, [filteredData]);
+
+      useEffect(() => {
+        if (!deckContainerRef.current) return;
+        const deckInstance = new deck.Deck({
+          parent: deckContainerRef.current,
+          initialViewState: INITIAL_VIEW_STATE,
+          controller: true,
+          layers: []
+        });
+        deckInstanceRef.current = deckInstance;
+        return () => deckInstance.finalize();
+      }, []);
+
+      useEffect(() => {
+        if (!deckInstanceRef.current) return;
+        const baseMapLayer = new deck.TileLayer({
+          id: 'carto-dark',
+          data: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          renderSubLayers: p => new deck.BitmapLayer(p, { data: null, image: p.data, bounds: [p.tile.bbox.west, p.tile.bbox.south, p.tile.bbox.east, p.tile.bbox.north] })
+        });
+
+        const dataLayer = layerMode === 'scatterplot'
+          ? new deck.ScatterplotLayer({
+              id: 'scatter',
+              data: filteredData,
+              pickable: true,
+              opacity: 0.9,
+              stroked: true,
+              filled: true,
+              radiusMinPixels: 9,
+              radiusMaxPixels: 30,
+              getPosition: d => [d.longitud, d.latitud],
+              getRadius: d => Math.max(200, d.valor / 7.5),
+              getFillColor: d => d.categoria === 'Alta' ? [239, 68, 68, 230] : d.categoria === 'Media' ? [245, 158, 11, 230] : [34, 197, 94, 230],
+              getLineColor: [255, 255, 255, 210],
+              onHover: info => setHoverInfo(info.object ? info : null),
+              onClick: info => info.object && setSelectedRadar(info.object)
+            })
+          : new deck.HeatmapLayer({
+              id: 'heat',
+              data: filteredData,
+              getPosition: d => [d.longitud, d.latitud],
+              getWeight: d => d.valor,
+              radiusPixels: 70,
+              intensity: 1.6
+            });
+
+        deckInstanceRef.current.setProps({ layers: [baseMapLayer, dataLayer] });
+      }, [filteredData, layerMode]);
+
+      return (
+        <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100">
+          <header className="bg-slate-900 border-b border-slate-800 p-4 z-20">
+            <h1 className="text-lg font-bold">Mapa de Tránsito de Buenos Aires – Flujo Vehicular (2024)</h1>
+            <div className="flex gap-4 mt-2">
+              <span className="text-xs bg-slate-800 px-3 py-1 rounded">Radares: <b>{kpis.total}</b></span>
+              <span className="text-xs bg-slate-800 px-3 py-1 rounded">Promedio: <b>{kpis.avg} veh/h</b></span>
+              <span className="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded">Críticos: <b>{kpis.critical}</b></span>
+            </div>
+          </header>
+          <main className="relative flex-1 w-full h-full">
+            <div ref={deckContainerRef} className="w-full h-full" />
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
